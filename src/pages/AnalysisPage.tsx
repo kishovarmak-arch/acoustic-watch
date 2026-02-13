@@ -3,12 +3,13 @@ import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Mic, MicOff, Play, Square, Download, Activity,
-  CheckCircle2, Clock, Compass, MapPin
+  CheckCircle2, Clock, Compass, MapPin, FileAudio
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { WaveformCanvas } from "@/components/analysis/WaveformCanvas";
 import { FrequencyBars } from "@/components/analysis/FrequencyBars";
@@ -17,7 +18,8 @@ import { ZonePredictionCard } from "@/components/analysis/ZonePredictionCard";
 import { DirectionIndicator } from "@/components/analysis/DirectionIndicator";
 import { HistoryChart } from "@/components/analysis/HistoryChart";
 import { FaultBarChart } from "@/components/analysis/FaultBarChart";
-import { findComponentById, plantSystems } from "@/data/plantHierarchy";
+import { SoundFileInput, type AudioFileMetadata } from "@/components/analysis/SoundFileInput";
+import { findComponentById, plantSystems, MIMII_SPECS } from "@/data/plantHierarchy";
 
 type Status = "awaiting" | "listening" | "analyzing" | "complete";
 
@@ -33,6 +35,16 @@ export interface ZonePrediction {
   riskLevel: string;
   timestamp: string;
   directionAngle: number;
+  // MIMII-referenced audio metrics
+  audioMetrics?: {
+    sampleRate: number;
+    snrDb: number;
+    rmsEnergy: number;
+    spectralCentroidHz: number;
+    durationSec: number;
+    format: string;
+    mimiiCompatible: boolean;
+  };
 }
 
 export default function AnalysisPage() {
@@ -53,6 +65,10 @@ export default function AnalysisPage() {
   const [prediction, setPrediction] = useState<ZonePrediction | null>(null);
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [decibelLevel, setDecibelLevel] = useState(0);
+
+  const [fileAudioBuffer, setFileAudioBuffer] = useState<AudioBuffer | null>(null);
+  const [fileMetadata, setFileMetadata] = useState<AudioFileMetadata | null>(null);
+  const [inputMode, setInputMode] = useState<"mic" | "file">("mic");
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -101,7 +117,7 @@ export default function AnalysisPage() {
     }
   };
 
-  const runAnalysis = () => {
+  const runAnalysis = (audioMeta?: AudioFileMetadata) => {
     stopListening();
     setStatus("analyzing");
     let prog = 0;
@@ -126,6 +142,8 @@ export default function AnalysisPage() {
           High: "Immediate shutdown recommended. Critical fault detected.",
         };
 
+        const meta = audioMeta || fileMetadata;
+
         const result: ZonePrediction = {
           system: systemName,
           zone,
@@ -138,6 +156,15 @@ export default function AnalysisPage() {
           riskLevel,
           timestamp: new Date().toLocaleString(),
           directionAngle: angle,
+          audioMetrics: meta ? {
+            sampleRate: meta.sampleRate,
+            snrDb: meta.estimatedSNR,
+            rmsEnergy: meta.rmsEnergy,
+            spectralCentroidHz: meta.spectralCentroid,
+            durationSec: meta.duration,
+            format: meta.format,
+            mimiiCompatible: meta.mimiiCompatible,
+          } : undefined,
         };
         setPrediction(result);
         setStatus("complete");
@@ -153,6 +180,31 @@ export default function AnalysisPage() {
       setAnalyzeProgress(Math.min(prog, 100));
     }, 300);
   };
+
+  const handleFileDecoded = useCallback((audioBuffer: AudioBuffer, fileName: string, metadata: AudioFileMetadata) => {
+    setFileAudioBuffer(audioBuffer);
+    setFileMetadata(metadata);
+
+    // Set up analyser for visualization from the file buffer
+    const ctx = new AudioContext();
+    audioContextRef.current = ctx;
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyserRef.current = analyser;
+    const source = ctx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(analyser);
+    source.connect(ctx.destination);
+    source.start();
+
+    setStatus("listening");
+    setPrediction(null);
+    setAnalyzeProgress(0);
+
+    // Auto-analyze after file finishes playing (or 10s max like MIMII)
+    const analyzeDelay = Math.min(audioBuffer.duration * 1000, MIMII_SPECS.segmentDuration * 1000);
+    recordingTimerRef.current = setTimeout(() => runAnalysis(metadata), analyzeDelay);
+  }, []);
 
   const handleStop = () => {
     stopListening();
@@ -198,43 +250,96 @@ export default function AnalysisPage() {
         </Badge>
       </div>
 
-      {/* Controls */}
-      <Card>
-        <CardContent className="p-5 flex flex-wrap items-center gap-4">
-          {status === "awaiting" || status === "complete" ? (
-            <Button onClick={startListening} className="bg-thermal hover:bg-thermal/90 text-thermal-foreground gap-2">
-              <Play className="w-4 h-4" /> Start Listening
-            </Button>
-          ) : status === "listening" ? (
-            <Button onClick={handleStop} variant="destructive" className="gap-2">
-              <Square className="w-4 h-4" /> Stop & Analyze
-            </Button>
-          ) : null}
+      {/* Input Mode Tabs */}
+      <Tabs value={inputMode} onValueChange={(v) => setInputMode(v as "mic" | "file")} className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="mic" className="gap-1.5"><Mic className="w-3.5 h-3.5" /> Live Microphone</TabsTrigger>
+          <TabsTrigger value="file" className="gap-1.5"><FileAudio className="w-3.5 h-3.5" /> Sound File</TabsTrigger>
+        </TabsList>
 
-          {status === "listening" && (
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-4 w-4">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                <span className="relative inline-flex rounded-full h-4 w-4 bg-destructive" />
-              </div>
-              <span className="text-sm font-medium text-destructive">Recording</span>
-            </div>
-          )}
+        <TabsContent value="mic">
+          <Card>
+            <CardContent className="p-5 flex flex-wrap items-center gap-4">
+              {status === "awaiting" || status === "complete" ? (
+                <Button onClick={startListening} className="bg-thermal hover:bg-thermal/90 text-thermal-foreground gap-2">
+                  <Play className="w-4 h-4" /> Start Listening
+                </Button>
+              ) : status === "listening" ? (
+                <Button onClick={handleStop} variant="destructive" className="gap-2">
+                  <Square className="w-4 h-4" /> Stop & Analyze
+                </Button>
+              ) : null}
 
-          {status === "analyzing" && (
-            <div className="flex-1 min-w-[200px] space-y-1">
-              <p className="text-sm text-muted-foreground">Analyzing acoustic frequency patterns… TDOA + Beamforming</p>
-              <Progress value={analyzeProgress} className="h-2" />
-            </div>
-          )}
+              {status === "listening" && (
+                <div className="flex items-center gap-3">
+                  <div className="relative flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-destructive" />
+                  </div>
+                  <span className="text-sm font-medium text-destructive">Recording</span>
+                </div>
+              )}
 
-          {prediction && (
-            <Button variant="outline" className="ml-auto gap-2" onClick={() => toast({ title: "Report exported (mock)" })}>
-              <Download className="w-4 h-4" /> Export Report
-            </Button>
-          )}
-        </CardContent>
-      </Card>
+              {status === "analyzing" && (
+                <div className="flex-1 min-w-[200px] space-y-1">
+                  <p className="text-sm text-muted-foreground">Analyzing acoustic frequency patterns… TDOA + Beamforming</p>
+                  <Progress value={analyzeProgress} className="h-2" />
+                </div>
+              )}
+
+              {prediction && (
+                <Button variant="outline" className="ml-auto gap-2" onClick={() => toast({ title: "Report exported (mock)" })}>
+                  <Download className="w-4 h-4" /> Export Report
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="file">
+          <div className="grid md:grid-cols-2 gap-4">
+            <SoundFileInput
+              onAudioDecoded={handleFileDecoded}
+              disabled={status === "listening" || status === "analyzing"}
+            />
+            <Card>
+              <CardContent className="p-5 space-y-3">
+                <p className="text-sm font-medium">File Analysis Controls</p>
+                {status === "analyzing" && (
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Analyzing acoustic frequency patterns… TDOA + Beamforming</p>
+                    <Progress value={analyzeProgress} className="h-2" />
+                  </div>
+                )}
+                {status === "listening" && fileMetadata && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex h-4 w-4">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75" />
+                        <span className="relative inline-flex rounded-full h-4 w-4 bg-accent" />
+                      </div>
+                      <span className="text-sm font-medium text-accent">Playing & analyzing file…</span>
+                    </div>
+                    <Button onClick={handleStop} variant="destructive" size="sm" className="gap-2">
+                      <Square className="w-3 h-3" /> Stop & Analyze Now
+                    </Button>
+                  </div>
+                )}
+                {(status === "awaiting" || status === "complete") && (
+                  <p className="text-sm text-muted-foreground">
+                    Upload a WAV/MP3 sound file to analyze. MIMII-format WAV files (16kHz, 16-bit) are recommended for best accuracy.
+                  </p>
+                )}
+                {prediction && (
+                  <Button variant="outline" className="gap-2" onClick={() => toast({ title: "Report exported (mock)" })}>
+                    <Download className="w-4 h-4" /> Export Report
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Audio Visualization */}
       {status === "listening" && (
