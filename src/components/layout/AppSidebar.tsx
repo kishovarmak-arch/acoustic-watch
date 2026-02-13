@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { title: "Home", url: "/", icon: Home },
-  { title: "Machines", url: "/machines", icon: Cpu },
+  { title: "Plant Browser", url: "/machines", icon: Cpu },
   { title: "Analysis", url: "/analysis", icon: Activity },
 ];
 
