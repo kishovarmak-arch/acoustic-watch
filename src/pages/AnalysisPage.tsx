@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Mic, MicOff, Play, Square, Download, AlertTriangle,
-  Activity, CheckCircle2, Clock
+  Mic, MicOff, Play, Square, Download, Activity,
+  CheckCircle2, Clock, Compass, MapPin
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,46 +13,44 @@ import { useToast } from "@/hooks/use-toast";
 import { WaveformCanvas } from "@/components/analysis/WaveformCanvas";
 import { FrequencyBars } from "@/components/analysis/FrequencyBars";
 import { HealthGauge } from "@/components/analysis/HealthGauge";
-import { PredictionCard } from "@/components/analysis/PredictionCard";
+import { ZonePredictionCard } from "@/components/analysis/ZonePredictionCard";
+import { DirectionIndicator } from "@/components/analysis/DirectionIndicator";
 import { HistoryChart } from "@/components/analysis/HistoryChart";
 import { FaultBarChart } from "@/components/analysis/FaultBarChart";
-
-const machineNames: Record<string, string> = {
-  "steam-turbine": "Steam Turbine",
-  "boiler-feed-pump": "Boiler Feed Pump",
-  "cooling-tower-fan": "Cooling Tower Fan",
-  "generator": "Generator",
-  "condenser-pump": "Condenser Pump",
-  "coal-pulverizer": "Coal Pulverizer",
-  "induced-draft-fan": "Induced Draft Fan",
-  "gearbox-assembly": "Gearbox Assembly",
-};
+import { findComponentById, plantSystems } from "@/data/plantHierarchy";
 
 type Status = "awaiting" | "listening" | "analyzing" | "complete";
 
-interface PredictionResult {
-  machine: string;
-  health_status: "Healthy" | "Warning" | "Critical";
+export interface ZonePrediction {
+  system: string;
+  zone: string;
+  component: string;
+  aiLabel: string;
+  faultType: string;
+  healthScore: number;
   confidence: number;
-  detected_fault: string;
   recommendation: string;
-  risk_level: string;
+  riskLevel: string;
   timestamp: string;
+  directionAngle: number;
 }
-
-const mockPredictions: PredictionResult[] = [
-  { machine: "", health_status: "Warning", confidence: 87, detected_fault: "Bearing Wear", recommendation: "Schedule maintenance within 7 days", risk_level: "Medium", timestamp: "" },
-  { machine: "", health_status: "Critical", confidence: 94, detected_fault: "Shaft Misalignment", recommendation: "Immediate shutdown recommended", risk_level: "High", timestamp: "" },
-  { machine: "", health_status: "Healthy", confidence: 96, detected_fault: "None Detected", recommendation: "Continue normal operation", risk_level: "Low", timestamp: "" },
-];
 
 export default function AnalysisPage() {
   const [searchParams] = useSearchParams();
-  const machineId = searchParams.get("machine") || "steam-turbine";
-  const machineName = machineNames[machineId] || "Unknown Machine";
+  const systemId = searchParams.get("system");
+  const componentId = searchParams.get("component");
+
+  // Resolve from hierarchy
+  const resolved = componentId ? findComponentById(componentId) : null;
+  const systemName = resolved?.system.name || plantSystems.find(s => s.id === systemId)?.name || "Unknown System";
+  const componentName = resolved?.component.name || "General Zone";
+  const subsystemName = resolved?.subsystem.name || "";
+  const zone = resolved?.system.zone || "";
+  const angleRange = resolved?.system.angleRange || [0, 360];
+  const possibleFaults = resolved?.component.faults || [];
 
   const [status, setStatus] = useState<Status>("awaiting");
-  const [prediction, setPrediction] = useState<PredictionResult | null>(null);
+  const [prediction, setPrediction] = useState<ZonePrediction | null>(null);
   const [analyzeProgress, setAnalyzeProgress] = useState(0);
   const [decibelLevel, setDecibelLevel] = useState(0);
 
@@ -93,10 +91,7 @@ export default function AnalysisPage() {
       setPrediction(null);
       setAnalyzeProgress(0);
 
-      // Auto-analyze after 12 seconds
-      recordingTimerRef.current = setTimeout(() => {
-        runAnalysis();
-      }, 12000);
+      recordingTimerRef.current = setTimeout(() => runAnalysis(), 12000);
     } catch {
       toast({
         title: "Microphone Access Denied",
@@ -115,16 +110,42 @@ export default function AnalysisPage() {
       if (prog >= 100) {
         prog = 100;
         clearInterval(interval);
-        const result = { ...mockPredictions[Math.floor(Math.random() * mockPredictions.length)] };
-        result.machine = machineName;
-        result.timestamp = new Date().toLocaleString();
+
+        const fault = possibleFaults.length > 0
+          ? possibleFaults[Math.floor(Math.random() * possibleFaults.length)]
+          : "None Detected";
+        const healthScore = fault === "None Detected" ? 90 + Math.floor(Math.random() * 10) : 40 + Math.floor(Math.random() * 40);
+        const confidence = 75 + Math.floor(Math.random() * 20);
+        const angle = angleRange[0] + Math.floor(Math.random() * (angleRange[1] - angleRange[0]));
+
+        const healthStatus = healthScore >= 80 ? "Healthy" : healthScore >= 55 ? "Warning" : "Critical";
+        const riskLevel = healthStatus === "Healthy" ? "Low" : healthStatus === "Warning" ? "Medium" : "High";
+        const recommendations: Record<string, string> = {
+          Low: "Continue normal operation. Next scheduled inspection adequate.",
+          Medium: "Schedule maintenance within 7 days. Monitor closely.",
+          High: "Immediate shutdown recommended. Critical fault detected.",
+        };
+
+        const result: ZonePrediction = {
+          system: systemName,
+          zone,
+          component: componentName,
+          aiLabel: resolved?.component.aiLabel || "unknown_zone",
+          faultType: fault,
+          healthScore,
+          confidence,
+          recommendation: recommendations[riskLevel],
+          riskLevel,
+          timestamp: new Date().toLocaleString(),
+          directionAngle: angle,
+        };
         setPrediction(result);
         setStatus("complete");
 
-        if (result.health_status === "Critical") {
+        if (healthStatus === "Critical") {
           toast({
             title: "⚠️ Critical Health Alert",
-            description: `${result.detected_fault} detected on ${machineName}. Immediate action required.`,
+            description: `${fault} detected in ${systemName} → ${componentName}. Immediate action required.`,
             variant: "destructive",
           });
         }
@@ -135,9 +156,7 @@ export default function AnalysisPage() {
 
   const handleStop = () => {
     stopListening();
-    if (status === "listening") {
-      runAnalysis();
-    }
+    if (status === "listening") runAnalysis();
   };
 
   useEffect(() => {
@@ -156,12 +175,25 @@ export default function AnalysisPage() {
   return (
     <div className="container py-6 md:py-10 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-3 justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold">{machineName}</h1>
-          <p className="text-muted-foreground text-sm">Real-time acoustic analysis dashboard</p>
+          <h1 className="text-2xl md:text-3xl font-bold">{componentName}</h1>
+          <div className="flex flex-wrap items-center gap-2 mt-1">
+            <Badge variant="outline" className="text-xs font-mono gap-1">
+              <MapPin className="w-3 h-3" /> {systemName}
+            </Badge>
+            {subsystemName && (
+              <Badge variant="outline" className="text-xs">{subsystemName}</Badge>
+            )}
+            {zone && (
+              <Badge variant="outline" className="text-xs font-mono gap-1">
+                <Compass className="w-3 h-3" /> {zone} ({angleRange[0]}°–{angleRange[1]}°)
+              </Badge>
+            )}
+          </div>
+          <p className="text-muted-foreground text-sm mt-1">Real-time acoustic analysis · System → Subsystem → Component</p>
         </div>
-        <Badge className={`${sc.color} gap-1.5 text-sm px-3 py-1`}>
+        <Badge className={`${sc.color} gap-1.5 text-sm px-3 py-1 shrink-0`}>
           {sc.icon} {sc.label}
         </Badge>
       </div>
@@ -191,7 +223,7 @@ export default function AnalysisPage() {
 
           {status === "analyzing" && (
             <div className="flex-1 min-w-[200px] space-y-1">
-              <p className="text-sm text-muted-foreground">Analyzing acoustic frequency patterns…</p>
+              <p className="text-sm text-muted-foreground">Analyzing acoustic frequency patterns… TDOA + Beamforming</p>
               <Progress value={analyzeProgress} className="h-2" />
             </div>
           )}
@@ -205,7 +237,7 @@ export default function AnalysisPage() {
       </Card>
 
       {/* Audio Visualization */}
-      {(status === "listening") && (
+      {status === "listening" && (
         <div className="grid md:grid-cols-2 gap-4">
           <Card>
             <CardHeader className="pb-2">
@@ -255,12 +287,17 @@ export default function AnalysisPage() {
           className="space-y-6"
         >
           <div className="grid md:grid-cols-3 gap-4">
-            <HealthGauge status={prediction.health_status} confidence={prediction.confidence} />
+            <HealthGauge
+              status={prediction.healthScore >= 80 ? "Healthy" : prediction.healthScore >= 55 ? "Warning" : "Critical"}
+              confidence={prediction.confidence}
+            />
             <div className="md:col-span-2">
-              <PredictionCard prediction={prediction} />
+              <ZonePredictionCard prediction={prediction} />
             </div>
           </div>
-          <div className="grid md:grid-cols-2 gap-4">
+
+          <div className="grid md:grid-cols-3 gap-4">
+            <DirectionIndicator angle={prediction.directionAngle} zone={prediction.zone} system={prediction.system} />
             <HistoryChart />
             <FaultBarChart />
           </div>
@@ -272,7 +309,8 @@ export default function AnalysisPage() {
           <CardContent className="py-16 text-center text-muted-foreground">
             <MicOff className="w-12 h-12 mx-auto mb-4 opacity-40" />
             <p className="text-lg font-medium mb-2">No Active Recording</p>
-            <p className="text-sm">Click "Start Listening" to begin acoustic analysis of the {machineName}.</p>
+            <p className="text-sm">Click "Start Listening" to begin acoustic analysis of <span className="font-semibold text-foreground">{componentName}</span></p>
+            <p className="text-xs mt-2">System: {systemName} · {zone}</p>
           </CardContent>
         </Card>
       )}

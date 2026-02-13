@@ -3,27 +3,27 @@ import { motion } from "framer-motion";
 import {
   Activity, Cpu, BarChart3, ArrowRight, Cog,
   AlertTriangle, Waves, CircleDot, Settings2,
-  Vibrate, Link2, Building2, Zap, Gauge, Mic, Monitor
+  Vibrate, Building2, Zap, Gauge, Mic, Monitor
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 const faults = [
-  { title: "Bearing Wear", icon: CircleDot, desc: "Degradation of bearing surfaces causing friction", sound: "High-frequency spikes above 5kHz" },
-  { title: "Shaft Misalignment", icon: Settings2, desc: "Angular or parallel offset between shafts", sound: "2x running speed harmonics" },
-  { title: "Cavitation", icon: Waves, desc: "Vapor bubble collapse in pump systems", sound: "Broadband crackling noise" },
-  { title: "Turbine Blade Damage", icon: Zap, desc: "Erosion, cracking or fouling of turbine blades", sound: "Blade-pass frequency anomalies" },
-  { title: "Boiler Fan Imbalance", icon: Activity, desc: "Uneven mass distribution in rotating fans", sound: "1x running speed dominant peak" },
-  { title: "Gearbox Defects", icon: Cog, desc: "Gear tooth wear, pitting or breakage", sound: "Gear mesh frequency sidebands" },
-  { title: "Loose Couplings", icon: Link2, desc: "Improperly fastened mechanical connections", sound: "Amplitude modulation patterns" },
-  { title: "Structural Vibration", icon: Vibrate, desc: "Resonance in support structures and foundations", sound: "Low-frequency rumble below 100Hz" },
+  { title: "Steam Valve Leakage", icon: Waves, desc: "High-pressure steam escaping through valve seats in boiler or turbine systems", sound: "High-frequency hiss above 4kHz", zone: "Boiler / Steam System" },
+  { title: "Bearing Wear", icon: CircleDot, desc: "Degradation of bearing surfaces in turbines, pumps, and fans", sound: "High-frequency spikes above 5kHz", zone: "Turbine / Feedwater" },
+  { title: "Shaft Misalignment", icon: Settings2, desc: "Angular or parallel offset between coupled shafts", sound: "2x running speed harmonics", zone: "Steam & Turbine System" },
+  { title: "Cavitation", icon: Waves, desc: "Vapor bubble collapse in pump and valve systems", sound: "Broadband crackling noise", zone: "Feedwater / Condenser" },
+  { title: "Turbine Blade Damage", icon: Zap, desc: "Erosion, cracking or fouling of HP/IP/LP turbine stages", sound: "Blade-pass frequency anomalies", zone: "Steam & Turbine System" },
+  { title: "Fan Imbalance", icon: Activity, desc: "Uneven mass distribution in FD/ID fans", sound: "1x running speed dominant peak", zone: "Fuel & Air System" },
+  { title: "Gearbox Defects", icon: Cog, desc: "Gear tooth wear, pitting or breakage in gearbox assemblies", sound: "Gear mesh frequency sidebands", zone: "Auxiliary Systems" },
+  { title: "Valve Flutter", icon: Vibrate, desc: "Rapid oscillation of control or stop valves under pressure", sound: "Irregular fluttering with amplitude modulation", zone: "Steam Line Valves" },
 ];
 
 const steps = [
-  { num: 1, title: "Select Machine", desc: "Choose the equipment to monitor", icon: Cpu },
-  { num: 2, title: "Capture Audio", desc: "Record live machine sounds", icon: Mic },
-  { num: 3, title: "AI Analysis", desc: "Frequency pattern recognition", icon: BarChart3 },
-  { num: 4, title: "Health Dashboard", desc: "View predictions & actions", icon: Monitor },
+  { num: 1, title: "Select Zone", desc: "Browse System → Subsystem → Component", icon: Cpu },
+  { num: 2, title: "Capture Audio", desc: "Record from acoustic zone mic", icon: Mic },
+  { num: 3, title: "TDOA + AI Analysis", desc: "Beamforming & fault classification", icon: BarChart3 },
+  { num: 4, title: "Zone Health Dashboard", desc: "View localized predictions", icon: Monitor },
 ];
 
 const fadeUp = {
@@ -129,6 +129,9 @@ const Index = () => {
                     <div className="flex items-center gap-2 text-xs text-accent font-mono bg-accent/5 px-2 py-1 rounded">
                       <Gauge className="w-3 h-3" />
                       {fault.sound}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-medium">
+                      Zone: {fault.zone}
                     </div>
                   </CardContent>
                 </Card>
