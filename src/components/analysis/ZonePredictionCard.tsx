@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertTriangle, CheckCircle2, XCircle, Clock, Wrench,
-  BarChart3, MapPin, Compass, Tag
+  BarChart3, Compass, Tag, Volume2
 } from "lucide-react";
 import type { ZonePrediction } from "@/pages/AnalysisPage";
 
@@ -37,6 +37,44 @@ export function ZonePredictionCard({ prediction }: { prediction: ZonePrediction 
             <span className="font-mono font-semibold">{prediction.directionAngle}°</span>
           </div>
         </div>
+
+        {/* Audio metrics from MIMII analysis */}
+        {prediction.audioMetrics && (
+          <div className="rounded-md bg-muted/50 border border-border p-3 space-y-1">
+            <p className="text-xs font-semibold flex items-center gap-1">
+              <Volume2 className="w-3.5 h-3.5 text-accent" /> Audio Signal Metrics
+              {prediction.audioMetrics.mimiiCompatible && (
+                <Badge className="bg-success/10 text-success text-[9px] px-1 py-0 ml-1">MIMII ✓</Badge>
+              )}
+            </p>
+            <div className="grid grid-cols-3 gap-2 text-[11px]">
+              <div>
+                <p className="text-muted-foreground">SNR</p>
+                <p className="font-mono font-semibold">{prediction.audioMetrics.snrDb} dB</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">RMS Energy</p>
+                <p className="font-mono font-semibold">{prediction.audioMetrics.rmsEnergy}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Spectral Centroid</p>
+                <p className="font-mono font-semibold">{prediction.audioMetrics.spectralCentroidHz} Hz</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Sample Rate</p>
+                <p className="font-mono font-semibold">{prediction.audioMetrics.sampleRate} Hz</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Duration</p>
+                <p className="font-mono font-semibold">{prediction.audioMetrics.durationSec.toFixed(1)}s</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Format</p>
+                <p className="font-mono font-semibold">{prediction.audioMetrics.format}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Fault details */}
         <div className="grid grid-cols-2 gap-3">

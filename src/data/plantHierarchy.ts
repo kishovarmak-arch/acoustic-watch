@@ -11,6 +11,31 @@ export interface PlantComponent {
   soundCharacteristics: string;
 }
 
+/**
+ * MIMII Dataset Reference Specifications
+ * Source: Hitachi MIMII Dataset (Malfunctioning Industrial Machine Investigation and Inspection)
+ * - Format: WAV (16-bit PCM)
+ * - Sample Rate: 16,000 Hz (16 kHz)
+ * - Channels: 8-channel microphone array (mono per channel for analysis)
+ * - SNR Levels: -6 dB, 0 dB, 6 dB (mixed with real factory background noise)
+ * - Machine Types: Valves, Pumps, Fans, Slide Rails
+ * - Segment Duration: ~10 seconds per clip
+ * - Frame Size: NFFT = 512, frame duration = 32 ms
+ */
+export const MIMII_SPECS = {
+  format: "WAV",
+  encoding: "16-bit PCM",
+  sampleRate: 16000,
+  channels: 8,
+  snrLevels: [-6, 0, 6] as const,
+  segmentDuration: 10,
+  fftSize: 512,
+  frameDurationMs: 32,
+  machineTypes: ["valve", "pump", "fan", "slider"] as const,
+  supportedInputFormats: [".wav", ".mp3", ".ogg", ".flac", ".m4a"],
+  maxFileSizeMB: 20,
+} as const;
+
 export interface Subsystem {
   id: string;
   name: string;
